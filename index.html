@@ -190,9 +190,12 @@
         let onGround = false;
         let score = 0;
         let superJumps = 3; // Contagem de super pulos
+        let canSuperJump = true; // Controle para evitar múltiplos pulos
         let gameOver = false;
         let dragon; // Dragão voador
         let birds = []; // Pássaros
+        let movingPlatforms = []; // Plataformas móveis
+        let fallingPlatforms = []; // Plataformas que caem
         
         // Audio Context para sons
         let audioContext;
@@ -248,20 +251,34 @@
             [5, 1.0, -57, 2, 1, 2, 'wood'],
             [-5, 1.0, -57, 2, 1, 2, 'grass'],
             
+            // PLATAFORMA FALSA (vai cair quando pisar)
+            [0, 1.0, -63, 2, 1, 2, 'lava', true], // último parâmetro = falsa
+            
             // Plataformas flutuantes - Desafio
             [0, 1.5, -64, 1.5, 1, 1.5, 'stone'],
             [-4, 2.0, -70, 1.5, 1, 1.5, 'wood'],
-            [4, 2.5, -76, 1.5, 1, 1.5, 'gold'],
+            
+            // PLATAFORMA FALSA
+            [4, 2.5, -76, 1.5, 1, 1.5, 'gold', true],
+            
+            // PLATAFORMA MÓVEL (vai e volta)
+            [0, 2.5, -82, 2, 1, 2, 'diamond', false, true], // último = móvel
             
             // Zona de lava (obstáculos perigosos)
             [-3, 2.5, -83, 2, 1, 2, 'lava'],
             [3, 2.5, -83, 2, 1, 2, 'lava'],
             [0, 3.0, -90, 3, 1, 3, 'stone'],
             
+            // PLATAFORMA FALSA
+            [-4, 3.2, -95, 1.5, 1, 1.5, 'wood', true],
+            
             // Plataforma de gelo (deslizante visual)
             [0, 3.0, -97, 4, 1, 4, 'ice'],
             [-6, 3.5, -104, 2, 1, 2, 'ice'],
             [6, 3.5, -104, 2, 1, 2, 'ice'],
+            
+            // PLATAFORMA MÓVEL
+            [0, 3.8, -108, 2, 1, 2, 'stone', false, true],
             
             // Caminho final - Diamante
             [0, 4.0, -112, 3, 1, 3, 'diamond'],
@@ -846,6 +863,18 @@
                 scene.add(cloud);
             }
             
+            // Adicionar MAIS nuvens variadas em diferentes alturas
+            for (let i = 0; i < 30; i++) {
+                const cloud = createCloud(
+                    (Math.random() - 0.5) * 200,
+                    15 + Math.random() * 25, // Diferentes alturas
+                    (Math.random() - 0.5) * 200 - 70
+                );
+                cloud.userData.speed = Math.random() * 0.02 + 0.005; // Velocidades variadas
+                clouds.push(cloud);
+                scene.add(cloud);
+            }
+            
             // Criar Dragão
             dragon = createDragon();
             scene.add(dragon);
@@ -869,7 +898,7 @@
 
             // Criar Plataformas com texturas
             platformData.forEach((data, index) => {
-                const [x, y, z, w, h, d, type] = data;
+                const [x, y, z, w, h, d, type, isFalling, isMoving] = data;
                 const platformGeo = new THREE.BoxGeometry(w, h, d);
                 const platformTex = createBlockTexture(type);
                 const platformMat = new THREE.MeshStandardMaterial({ 
@@ -882,6 +911,32 @@
                 platform.castShadow = true;
                 
                 platform.userData.box = new THREE.Box3().setFromObject(platform);
+                platform.userData.isFalling = isFalling || false;
+                platform.userData.isMoving = isMoving || false;
+                platform.userData.hasFallen = false;
+                platform.userData.fallSpeed = 0;
+                platform.userData.touched = false;
+                
+                // Salva posição original
+                platform.userData.startX = x;
+                platform.userData.startY = y;
+                platform.userData.startZ = z;
+                
+                // Configuração de plataforma móvel
+                if (isMoving) {
+                    platform.userData.startX = x;
+                    platform.userData.moveRange = 4; // Distância que se move
+                    platform.userData.moveSpeed = 0.02;
+                    platform.userData.moveDirection = 1;
+                    movingPlatforms.push(platform);
+                }
+                
+                if (isFalling) {
+                    fallingPlatforms.push(platform);
+                    // Visual diferente para plataformas falsas (mais escuras)
+                    platform.material.opacity = 0.9;
+                    platform.material.transparent = true;
+                }
                 
                 platforms.push(platform);
                 scene.add(platform);
@@ -911,16 +966,22 @@
                     }
                 }
                 
-                // Adiciona árvores em algumas plataformas de grama
-                if (type === 'grass' && w >= 3 && Math.random() > 0.5) {
-                    const tree = createTree(
-                        x + (Math.random() - 0.5) * (w - 1),
-                        z + (Math.random() - 0.5) * (d - 1)
-                    );
-                    trees.push(tree);
-                    scene.add(tree);
-                }
+                // NÃO adiciona árvores automaticamente mais
+                // As árvores serão colocadas manualmente nas posições específicas
             });
+            
+            // Adiciona árvores FIXAS nas laterais da plataforma inicial
+            // Plataforma inicial está em [0, -0.5, 0] com tamanho [8, 1, 8]
+            
+            // Árvore do lado ESQUERDO
+            const leftTree = createTree(-5, 0);
+            trees.push(leftTree);
+            scene.add(leftTree);
+            
+            // Árvore do lado DIREITO (opcional, se quiser simetria)
+            const rightTree = createTree(5, 0);
+            trees.push(rightTree);
+            scene.add(rightTree);
 
             // Criar Moedas estilo Minecraft
             const coinGeo = new THREE.BoxGeometry(0.4, 0.4, 0.1);
@@ -1013,9 +1074,44 @@
             
             // Anima as nuvens (movimento lento)
             clouds.forEach(cloud => {
-                cloud.position.x += 0.01;
-                if (cloud.position.x > 80) {
-                    cloud.position.x = -80;
+                const speed = cloud.userData.speed || 0.01;
+                cloud.position.x += speed;
+                if (cloud.position.x > 100) {
+                    cloud.position.x = -100;
+                }
+                // Movimento vertical sutil
+                cloud.position.y += Math.sin(Date.now() * 0.0005) * 0.005;
+            });
+            
+            // Anima plataformas móveis
+            movingPlatforms.forEach(platform => {
+                platform.position.x += platform.userData.moveSpeed * platform.userData.moveDirection;
+                
+                // Inverte direção quando atinge o limite
+                if (Math.abs(platform.position.x - platform.userData.startX) > platform.userData.moveRange) {
+                    platform.userData.moveDirection *= -1;
+                }
+                
+                // Atualiza a caixa de colisão
+                platform.userData.box.setFromObject(platform);
+            });
+            
+            // Anima plataformas que caem
+            fallingPlatforms.forEach(platform => {
+                if (platform.userData.hasFallen) {
+                    platform.userData.fallSpeed += 0.002; // Gravidade
+                    platform.position.y -= platform.userData.fallSpeed;
+                    platform.rotation.x += 0.05;
+                    platform.rotation.z += 0.03;
+                    
+                    // Remove se caiu muito
+                    if (platform.position.y < -20) {
+                        scene.remove(platform);
+                    }
+                } else if (platform.userData.touched) {
+                    // Começa a tremer antes de cair
+                    platform.position.x += (Math.random() - 0.5) * 0.05;
+                    platform.position.y -= 0.01;
                 }
             });
             
@@ -1102,15 +1198,14 @@
             // Y (Pulo)
             // Checa Super Pulo PRIMEIRO
             // (Tecla Q ou Shift Esquerdo, ou toque)
-            if ((keyState['KeyQ'] || keyState['ShiftLeft'] || touchState.superJump) && superJumps > 0) {
+            if ((keyState['KeyQ'] || keyState['ShiftLeft'] || touchState.superJump) && superJumps > 0 && canSuperJump) {
                 playerVelocity.y = superJumpForce;
-                onGround = false; // Pode pular no ar
+                onGround = false;
                 superJumps--;
+                canSuperJump = false; // Bloqueia até soltar a tecla
                 updateSuperJumps();
                 playSuperJumpSound(); // Som de super pulo
                 touchState.superJump = false; // Consome o toque
-                keyState['KeyQ'] = false; // Consome a tecla
-                keyState['ShiftLeft'] = false;
             } 
             // Pulo Normal
             else if ((keyState['Space'] || touchState.jump) && onGround) {
@@ -1118,6 +1213,11 @@
                 onGround = false;
                 playJumpSound(); // Som de pulo
                 touchState.jump = false; // Consome o pulo por toque
+            }
+            
+            // Libera super pulo quando soltar as teclas
+            if (!keyState['KeyQ'] && !keyState['ShiftLeft'] && !touchState.superJump) {
+                canSuperJump = true;
             }
 
             // --- 2. Aplicar Gravidade ---
@@ -1141,11 +1241,23 @@
                     // E se o fundo do jogador no frame anterior estava acima do topo da plataforma
                     if (playerVelocity.y <= 0 && (player.position.y - 0.65) > (platform.position.y)) {
                         
-                        playerVelocity.y = 0; // Para de cair
-                        // "Gruda" o jogador no topo da plataforma (pés do personagem na base)
-                        player.position.y = platform.position.y + (platform.geometry.parameters.height / 2) + 0.65;
-                        onGround = true;
-                        break; // Encontrou um chão, não precisa checar outras plataformas
+                        // Se é plataforma falsa, marca como tocada
+                        if (platform.userData.isFalling && !platform.userData.touched) {
+                            platform.userData.touched = true;
+                            // Após 0.5 segundos, começa a cair
+                            setTimeout(() => {
+                                platform.userData.hasFallen = true;
+                            }, 500);
+                        }
+                        
+                        // Só para de cair se a plataforma não caiu ainda
+                        if (!platform.userData.hasFallen) {
+                            playerVelocity.y = 0; // Para de cair
+                            // "Gruda" o jogador no topo da plataforma (pés do personagem na base)
+                            player.position.y = platform.position.y + (platform.geometry.parameters.height / 2) + 0.65;
+                            onGround = true;
+                            break; // Encontrou um chão, não precisa checar outras plataformas
+                        }
                     }
                 }
             }
@@ -1216,7 +1328,27 @@
             playerVelocity.set(0, 0, 0);
             onGround = true;
             superJumps = 3; // Reseta os super pulos
+            canSuperJump = true; // Reseta controle do super pulo
             updateSuperJumps(); // Atualiza a UI
+            
+            // Reseta plataformas que caíram
+            fallingPlatforms.forEach(platform => {
+                if (platform.userData.hasFallen || platform.userData.touched) {
+                    platform.userData.hasFallen = false;
+                    platform.userData.touched = false;
+                    platform.userData.fallSpeed = 0;
+                    platform.rotation.x = 0;
+                    platform.rotation.z = 0;
+                    // Restaura posição original
+                    platform.position.set(platform.userData.startX, platform.userData.startY, platform.userData.startZ);
+                    platform.userData.box.setFromObject(platform);
+                    
+                    // Re-adiciona à cena se foi removida
+                    if (!platform.parent) {
+                        scene.add(platform);
+                    }
+                }
+            });
         }
 
         /**
