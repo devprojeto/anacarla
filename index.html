@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <!-- Garante que o jogo funcione bem em dispositivos móveis -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Parkour Ana Carla - Para o Amor da Minha Vida ❤️</title>
+    <!-- Importa a fonte do Google para um visual mais amigável -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500&display=swap" rel="stylesheet">
+    <style>
+        /* Estilos básicos para remover margens e esconder barras de rolagem */
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Fredoka', sans-serif; /* Fonte amigável */
+            color: white;
+        }
+
+        /* O canvas do jogo ocupará a tela inteira */
+        canvas {
+            display: block;
+        }
+
+        /* Contêiner para a interface do usuário (pontuação, título) */
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            font-size: 24px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #ui-container h1 {
+            margin: 0;
+            font-size: 32px;
+        }
+        
+        #ui-container div {
+            margin-top: 5px;
+        }
+
+        /* Caixa de mensagem para vitórias ou resets */
+        #message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 20px 40px;
+            border-radius: 15px;
+            font-size: 28px;
+            text-align: center;
+            z-index: 20;
+            /* Começa escondido */
+            display: none;
+            border: 2px solid white;
+        }
+
+        /* Controles de toque para dispositivos móveis */
+        #touch-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            z-index: 15;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 0 20px;
+            box-sizing: border-box;
+            /* Impede que o toque selecione o texto */
+            user-select: none; 
+        }
+
+        /* Estilo comum para os botões de toque */
+        .touch-btn {
+            background-color: rgba(255, 255, 255, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        /* Botão de pulo é maior */
+        #jump-btn {
+            width: 80px;
+            height: 80px;
+            font-size: 18px;
+            text-transform: uppercase;
+        }
+        
+        /* Grupo de botões de pulo (normal e super) */
+        #jump-controls {
+            display: flex;
+            align-items: flex-end;
+            gap: 15px;
+        }
+
+        /* Botão de Super Pulo */
+        #super-jump-btn {
+            width: 70px;
+            height: 70px;
+            font-size: 14px;
+            text-transform: uppercase;
+            background-color: rgba(180, 50, 255, 0.4); /* Roxo */
+            border-color: rgba(220, 150, 255, 0.6);
+        }
+
+        /* Grupo de botões de movimento (setas) */
+        #move-controls {
+            display: grid;
+            grid-template-areas:
+                ". up ."
+                "left . right"
+                ". down .";
+            gap: 10px;
+        }
+
+        /* Posicionando cada seta no grid */
+        #up-btn { grid-area: up; }
+        #down-btn { grid-area: down; }
+        #left-btn { grid-area: left; }
+        #right-btn { grid-area: right; }
+
+    </style>
+</head>
+<body>
+    <!-- Interface do Usuário -->
+    <div id="ui-container">
+        <h1>⛏️ Parkour Ana Carla ❤️</h1>
+        <div id="score">🪙 Moedas: 0</div>
+        <div id="super-jumps">🚀 Super Pulos: 3</div> <!-- Novo contador -->
+    </div>
+
+    <!-- Caixa de Mensagem -->
+    <div id="message-box">
+        <div id="message-text">Você Venceu!</div>
+        <button id="reset-btn" style="margin-top: 15px; padding: 10px 20px; font-size: 16px; border-radius: 10px; border: none; cursor: pointer; font-family: 'Fredoka', sans-serif;">Jogar Novamente</button>
+    </div>
+
+    <!-- Controles de Toque -->
+    <div id="touch-controls">
+        <div id="move-controls">
+            <div id="up-btn" class="touch-btn">▲</div>
+            <div id="left-btn" class="touch-btn">◀</div>
+            <div id="right-btn" class="touch-btn">▶</div>
+            <div id="down-btn" class="touch-btn">▼</div>
+        </div>
+        <div id="jump-controls"> <!-- Novo grupo para pulos -->
+             <div id="super-jump-btn" class="touch-btn">Super</div> <!-- Novo botão -->
+            <div id="jump-btn" class="touch-btn">Pular</div>
+        </div>
+    </div>
+
+    <!-- O Script do Jogo (incluindo Three.js) -->
+    <script type="module">
+        // Importa a biblioteca Three.js de um CDN
+        import * as THREE from 'https://cdn.skypack.dev/three@0.132.2';
+
+        // --- Variáveis Globais do Jogo ---
+        let scene, camera, renderer;
+        let player, playerBox; // O personagem do jogador e sua caixa de colisão
+        let platforms = []; // Array para guardar as plataformas
+        let coins = []; // Array para guardar as moedas
+        let goalPlatform; // A plataforma final
+        let clouds = []; // Array para nuvens
+        let trees = []; // Array para árvores
+    let particles = []; // Partículas decorativas
+    let pickupParticles = []; // Partículas ao coletar moedas
+
+        // Física e Controles
+        const playerSize = 1.2; // Tamanho maior para o personagem
+        const playerHeight = 1.5; // Altura total do personagem
+        const playerVelocity = new THREE.Vector3(0, 0, 0); // Velocidade do jogador
+        const gravity = 0.0015;
+        const jumpForce = 0.08;
+        const superJumpForce = 0.14; // Pulo mais forte
+        const moveSpeed = 0.06;
+        const damping = 0.9; // Fator de "freio" no ar ou chão
+        let onGround = false;
+        let score = 0;
+        let superJumps = 3; // Contagem de super pulos
+        let gameOver = false;
+        let dragon; // Dragão voador
+        let birds = []; // Pássaros
+        
+        // Audio Context para sons
+        let audioContext;
+        
+        // Estado das teclas e toque
+        const keyState = {};
+        const touchState = {
+            forward: false,
+            backward: false,
+            left: false,
+            right: false,
+            jump: false,
+            superJump: false // Novo estado de toque
+        };
+
+        // Posição inicial do jogador
+        const startPosition = new THREE.Vector3(0, 1, 0);
+        const startRotation = 0; // Rotação 0 = de frente para os obstáculos
+
+        // Referências aos elementos da UI
+        const scoreElement = document.getElementById('score');
+        const superJumpsElement = document.getElementById('super-jumps'); // Nova referência
+        const messageBox = document.getElementById('message-box');
+        const messageText = document.getElementById('message-text');
+        const resetBtn = document.getElementById('reset-btn');
+
+        // --- Nível do Jogo ---
+        // Define as plataformas [x, y, z, largura, altura, profundidade, tipo]
+        // Tipos: 'grass', 'stone', 'wood', 'gold', 'diamond', 'lava', 'ice'
+        const platformData = [
+            // Início - Ilha grande de grama
+            [0, -0.5, 0, 8, 1, 8, 'grass'],
+            [-6, -0.5, 0, 3, 1, 3, 'grass'],
+            [6, -0.5, 0, 3, 1, 3, 'grass'],
+            
+            // Caminho 1 - Pedra
+            [0, -0.5, -10, 4, 1, 4, 'stone'],
+            [-5, -0.5, -16, 3, 1, 3, 'stone'],
+            [5, -0.5, -16, 3, 1, 3, 'wood'],
+            
+            // Caminho 2 - Mix de materiais
+            [0, 0.5, -23, 4, 1, 4, 'wood'],
+            [6, 0.5, -30, 3, 1, 3, 'stone'],
+            [-6, 0.5, -30, 3, 1, 3, 'grass'],
+            
+            // Obstáculos 1 - Plataformas pequenas
+            [0, 0.5, -38, 2, 1, 2, 'gold'],
+            [4, 0.5, -44, 1.5, 1, 1.5, 'stone'],
+            [-4, 0.5, -44, 1.5, 1, 1.5, 'wood'],
+            
+            // Plataformas estreitas
+            [0, 0.5, -50, 1, 1, 6, 'stone'],
+            [5, 1.0, -57, 2, 1, 2, 'wood'],
+            [-5, 1.0, -57, 2, 1, 2, 'grass'],
+            
+            // Plataformas flutuantes - Desafio
+            [0, 1.5, -64, 1.5, 1, 1.5, 'stone'],
+            [-4, 2.0, -70, 1.5, 1, 1.5, 'wood'],
+            [4, 2.5, -76, 1.5, 1, 1.5, 'gold'],
+            
+            // Zona de lava (obstáculos perigosos)
+            [-3, 2.5, -83, 2, 1, 2, 'lava'],
+            [3, 2.5, -83, 2, 1, 2, 'lava'],
+            [0, 3.0, -90, 3, 1, 3, 'stone'],
+            
+            // Plataforma de gelo (deslizante visual)
+            [0, 3.0, -97, 4, 1, 4, 'ice'],
+            [-6, 3.5, -104, 2, 1, 2, 'ice'],
+            [6, 3.5, -104, 2, 1, 2, 'ice'],
+            
+            // Caminho final - Diamante
+            [0, 4.0, -112, 3, 1, 3, 'diamond'],
+            [0, 4.5, -119, 2, 1, 2, 'diamond'],
+            
+            // Plataforma final - DIAMANTE GIGANTE
+            [0, 5.0, -128, 8, 1, 8, 'diamond']
+        ];
+
+        // Define as moedas [x, y, z]
+        const coinData = [
+            [0, 1.5, 0],
+            [-6, 1.5, 0],
+            [6, 1.5, 0],
+            [0, 1.5, -10],
+            [-5, 1.5, -16],
+            [5, 1.5, -16],
+            [0, 2.5, -23],
+            [6, 2.5, -30],
+            [-6, 2.5, -30],
+            [0, 2.5, -38],
+            [4, 2.5, -44],
+            [-4, 2.5, -44],
+            [0, 2.5, -50],
+            [5, 3.0, -57],
+            [-5, 3.0, -57],
+            [0, 3.5, -64],
+            [-4, 4.0, -70],
+            [4, 4.5, -76],
+            [0, 5.0, -90],
+            [0, 5.0, -97],
+            [-6, 5.5, -104],
+            [6, 5.5, -104],
+            [0, 6.0, -112],
+            [0, 6.5, -119],
+            [0, 7.0, -128],
+        ];
+
+
+        // --- Funções Principais ---
+
+        /**
+         * Cria textura de canvas para blocos tipo Minecraft
+         */
+        function createBlockTexture(type) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            
+            // Cores base por tipo
+            const colors = {
+                grass: { top: '#7cb342', side: '#8bc34a', dirt: '#8d6e63' },
+                stone: { base: '#757575', light: '#9e9e9e', dark: '#616161' },
+                wood: { base: '#8d6e63', light: '#a1887f', dark: '#6d4c41' },
+                gold: { base: '#ffd700', light: '#ffeb3b', dark: '#f57f17' },
+                diamond: { base: '#00bcd4', light: '#4dd0e1', dark: '#0097a7' },
+                lava: { base: '#ff5722', light: '#ff9800', dark: '#d84315' },
+                ice: { base: '#b3e5fc', light: '#e1f5fe', dark: '#81d4fa' }
+            };
+            
+            const color = colors[type];
+            
+            // Preenche fundo
+            ctx.fillStyle = color.base || color.side;
+            ctx.fillRect(0, 0, 64, 64);
+            
+            // Adiciona textura pixelada
+            for (let i = 0; i < 16; i++) {
+                for (let j = 0; j < 16; j++) {
+                    const rand = Math.random();
+                    if (rand > 0.7) {
+                        ctx.fillStyle = color.light;
+                        ctx.fillRect(i * 4, j * 4, 4, 4);
+                    } else if (rand < 0.3) {
+                        ctx.fillStyle = color.dark;
+                        ctx.fillRect(i * 4, j * 4, 4, 4);
+                    }
+                }
+            }
+            
+            // Linhas de grid para efeito Minecraft
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 64; i += 4) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, 64);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(64, i);
+                ctx.stroke();
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.magFilter = THREE.NearestFilter; // Efeito pixelado
+            texture.minFilter = THREE.NearestFilter;
+            return texture;
+        }
+
+        /**
+         * Cria um personagem tipo Minecraft (cabeça, corpo, braços, pernas)
+         */
+        function createMinecraftPlayer() {
+            const playerGroup = new THREE.Group();
+            
+            // Cabeça (cubo maior)
+            const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+            const headMat = new THREE.MeshStandardMaterial({ 
+                color: 0xffd7a8, // Cor de pele
+                flatShading: true 
+            });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 0.65; // Ajustado para ficar mais alto
+            head.castShadow = true;
+            playerGroup.add(head);
+            
+            // Corpo
+            const bodyGeo = new THREE.BoxGeometry(0.5, 0.6, 0.25);
+            const bodyMat = new THREE.MeshStandardMaterial({ 
+                color: 0x2196f3, // Camisa azul
+                flatShading: true 
+            });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.15; // Ajustado
+            body.castShadow = true;
+            playerGroup.add(body);
+            
+            // Braço Esquerdo
+            const armGeo = new THREE.BoxGeometry(0.2, 0.5, 0.2);
+            const armMat = new THREE.MeshStandardMaterial({ 
+                color: 0x1976d2,
+                flatShading: true 
+            });
+            const leftArm = new THREE.Mesh(armGeo, armMat);
+            leftArm.position.set(-0.35, 0.15, 0);
+            leftArm.castShadow = true;
+            playerGroup.add(leftArm);
+            
+            // Braço Direito
+            const rightArm = new THREE.Mesh(armGeo, armMat);
+            rightArm.position.set(0.35, 0.15, 0);
+            rightArm.castShadow = true;
+            playerGroup.add(rightArm);
+            
+            // Perna Esquerda
+            const legGeo = new THREE.BoxGeometry(0.2, 0.5, 0.2);
+            const legMat = new THREE.MeshStandardMaterial({ 
+                color: 0x424242, // Calça escura
+                flatShading: true 
+            });
+            const leftLeg = new THREE.Mesh(legGeo, legMat);
+            leftLeg.position.set(-0.12, -0.4, 0); // Ajustado para ficar na base
+            leftLeg.castShadow = true;
+            playerGroup.add(leftLeg);
+            
+            // Perna Direita
+            const rightLeg = new THREE.Mesh(legGeo, legMat);
+            rightLeg.position.set(0.12, -0.4, 0); // Ajustado para ficar na base
+            rightLeg.castShadow = true;
+            playerGroup.add(rightLeg);
+            
+            // NÃO gira o grupo - deixa na rotação padrão (0) para ficar de frente
+            // playerGroup.rotation.y = Math.PI;
+            return playerGroup;
+        }
+
+        /**
+         * Cria um dragão voador tipo Minecraft
+         */
+        function createDragon() {
+            const dragonGroup = new THREE.Group();
+            
+            // Corpo do dragão
+            const bodyGeo = new THREE.BoxGeometry(3, 1.5, 1.5);
+            const bodyMat = new THREE.MeshStandardMaterial({ 
+                color: 0x4a0e4e, // Roxo escuro (Ender Dragon style)
+                flatShading: true,
+                emissive: 0x1a0a1d,
+                emissiveIntensity: 0.3
+            });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.castShadow = true;
+            dragonGroup.add(body);
+            
+            // Cabeça
+            const headGeo = new THREE.BoxGeometry(1.5, 1.2, 1.2);
+            const head = new THREE.Mesh(headGeo, bodyMat);
+            head.position.set(2, 0.2, 0);
+            head.castShadow = true;
+            dragonGroup.add(head);
+            
+            // Focinho/boca
+            const snoutGeo = new THREE.BoxGeometry(0.6, 0.5, 0.5);
+            const snout = new THREE.Mesh(snoutGeo, bodyMat);
+            snout.position.set(2.8, 0, 0);
+            dragonGroup.add(snout);
+            
+            // Olhos brilhantes roxos (estilo Ender Dragon)
+            const eyeGeo = new THREE.BoxGeometry(0.3, 0.3, 0.1);
+            const eyeMat = new THREE.MeshBasicMaterial({ 
+                color: 0xb388ff, // Roxo claro brilhante
+                transparent: true,
+                opacity: 0.9
+            });
+            const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+            leftEye.position.set(2.5, 0.4, 0.5);
+            dragonGroup.add(leftEye);
+            
+            const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+            rightEye.position.set(2.5, 0.4, -0.5);
+            dragonGroup.add(rightEye);
+            
+            // Asas maiores e mais detalhadas
+            const wingGeo = new THREE.BoxGeometry(0.3, 3, 4);
+            const wingMat = new THREE.MeshStandardMaterial({ 
+                color: 0x6a1b6e,
+                flatShading: true,
+                transparent: true,
+                opacity: 0.85,
+                emissive: 0x3d1140,
+                emissiveIntensity: 0.2
+            });
+            
+            const leftWing = new THREE.Mesh(wingGeo, wingMat);
+            leftWing.position.set(-0.5, 0.8, 2.5);
+            leftWing.rotation.x = -Math.PI / 6;
+            leftWing.castShadow = true;
+            dragonGroup.add(leftWing);
+            dragonGroup.userData.leftWing = leftWing;
+            
+            const rightWing = new THREE.Mesh(wingGeo, wingMat);
+            rightWing.position.set(-0.5, 0.8, -2.5);
+            rightWing.rotation.x = Math.PI / 6;
+            rightWing.castShadow = true;
+            dragonGroup.add(rightWing);
+            dragonGroup.userData.rightWing = rightWing;
+            
+            // Cauda longa e segmentada
+            for (let i = 0; i < 3; i++) {
+                const size = 0.8 - (i * 0.15);
+                const tailGeo = new THREE.BoxGeometry(1.5, size, size);
+                const tail = new THREE.Mesh(tailGeo, bodyMat);
+                tail.position.set(-2.5 - (i * 1.3), -0.1 * i, 0);
+                tail.rotation.y = -0.2 * (i + 1);
+                tail.castShadow = true;
+                dragonGroup.add(tail);
+            }
+            
+            // Chifres maiores
+            const hornGeo = new THREE.BoxGeometry(0.25, 0.8, 0.25);
+            const hornMat = new THREE.MeshStandardMaterial({ 
+                color: 0x1a1a1a,
+                flatShading: true 
+            });
+            const leftHorn = new THREE.Mesh(hornGeo, hornMat);
+            leftHorn.position.set(2, 1, 0.4);
+            leftHorn.rotation.z = -0.3;
+            dragonGroup.add(leftHorn);
+            
+            const rightHorn = new THREE.Mesh(hornGeo, hornMat);
+            rightHorn.position.set(2, 1, -0.4);
+            rightHorn.rotation.z = 0.3;
+            dragonGroup.add(rightHorn);
+            
+            // Espinhos nas costas
+            for (let i = 0; i < 4; i++) {
+                const spikeGeo = new THREE.BoxGeometry(0.15, 0.5, 0.15);
+                const spike = new THREE.Mesh(spikeGeo, hornMat);
+                spike.position.set(-1 + (i * 0.8), 1, 0);
+                spike.rotation.x = 0.2;
+                dragonGroup.add(spike);
+            }
+            
+            // Patas
+            const legGeo = new THREE.BoxGeometry(0.4, 1, 0.4);
+            const leftFrontLeg = new THREE.Mesh(legGeo, bodyMat);
+            leftFrontLeg.position.set(0.5, -1, 0.6);
+            dragonGroup.add(leftFrontLeg);
+            
+            const rightFrontLeg = new THREE.Mesh(legGeo, bodyMat);
+            rightFrontLeg.position.set(0.5, -1, -0.6);
+            dragonGroup.add(rightFrontLeg);
+            
+            const leftBackLeg = new THREE.Mesh(legGeo, bodyMat);
+            leftBackLeg.position.set(-1, -1, 0.6);
+            dragonGroup.add(leftBackLeg);
+            
+            const rightBackLeg = new THREE.Mesh(legGeo, bodyMat);
+            rightBackLeg.position.set(-1, -1, -0.6);
+            dragonGroup.add(rightBackLeg);
+            
+            dragonGroup.position.set(-20, 15, -50);
+            dragonGroup.userData.angle = 0;
+            dragonGroup.userData.speed = 0.01;
+            
+            return dragonGroup;
+        }
+
+        /**
+         * Cria um pássaro voador
+         */
+        function createBird(x, y, z) {
+            const birdGroup = new THREE.Group();
+            
+            // Corpo
+            const bodyGeo = new THREE.BoxGeometry(0.4, 0.3, 0.6);
+            const bodyMat = new THREE.MeshStandardMaterial({ 
+                color: 0x444444,
+                flatShading: true 
+            });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.castShadow = true;
+            birdGroup.add(body);
+            
+            // Cabeça
+            const headGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+            const head = new THREE.Mesh(headGeo, bodyMat);
+            head.position.set(0, 0.15, 0.3);
+            birdGroup.add(head);
+            
+            // Asas
+            const wingGeo = new THREE.BoxGeometry(0.1, 0.05, 0.8);
+            const wingMat = new THREE.MeshStandardMaterial({ 
+                color: 0x333333,
+                flatShading: true 
+            });
+            
+            const leftWing = new THREE.Mesh(wingGeo, wingMat);
+            leftWing.position.set(-0.25, 0, 0);
+            birdGroup.add(leftWing);
+            birdGroup.userData.leftWing = leftWing;
+            
+            const rightWing = new THREE.Mesh(wingGeo, wingMat);
+            rightWing.position.set(0.25, 0, 0);
+            birdGroup.add(rightWing);
+            birdGroup.userData.rightWing = rightWing;
+            
+            birdGroup.position.set(x, y, z);
+            birdGroup.userData.speed = Math.random() * 0.05 + 0.03;
+            birdGroup.userData.wingSpeed = Math.random() * 0.1 + 0.1;
+            
+            return birdGroup;
+        }
+
+        /**
+         * Cria nuvens no céu
+         */
+        function createCloud(x, y, z) {
+            const cloudGroup = new THREE.Group();
+            const cloudMat = new THREE.MeshStandardMaterial({ 
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.8,
+                flatShading: true
+            });
+            
+            // Várias partes para formar a nuvem
+            for (let i = 0; i < 5; i++) {
+                const size = Math.random() * 2 + 1;
+                const cloudGeo = new THREE.BoxGeometry(size, size * 0.6, size);
+                const cloudPart = new THREE.Mesh(cloudGeo, cloudMat);
+                cloudPart.position.set(
+                    (Math.random() - 0.5) * 4,
+                    (Math.random() - 0.5) * 1,
+                    (Math.random() - 0.5) * 4
+                );
+                cloudGroup.add(cloudPart);
+            }
+            
+            cloudGroup.position.set(x, y, z);
+            return cloudGroup;
+        }
+
+        /**
+         * Cria uma árvore tipo Minecraft
+         */
+        function createTree(x, z) {
+            const treeGroup = new THREE.Group();
+            
+            // Tronco
+            const trunkGeo = new THREE.BoxGeometry(0.4, 2, 0.4);
+            const trunkTex = createBlockTexture('wood');
+            const trunkMat = new THREE.MeshStandardMaterial({ 
+                map: trunkTex,
+                flatShading: true 
+            });
+            const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+            trunk.position.y = 1;
+            trunk.castShadow = true;
+            trunk.receiveShadow = true;
+            treeGroup.add(trunk);
+            
+            // Folhas (formato pixelado)
+            const leafMat = new THREE.MeshStandardMaterial({ 
+                color: 0x4caf50,
+                flatShading: true 
+            });
+            
+            // Três camadas de folhas
+            for (let i = 0; i < 3; i++) {
+                const size = 1.5 - (i * 0.3);
+                const leafGeo = new THREE.BoxGeometry(size, 0.5, size);
+                const leaf = new THREE.Mesh(leafGeo, leafMat);
+                leaf.position.y = 2 + (i * 0.5);
+                leaf.castShadow = true;
+                treeGroup.add(leaf);
+            }
+            
+            treeGroup.position.set(x, 0, z);
+            return treeGroup;
+        }
+
+        /**
+         * Inicializa o Audio Context
+         */
+        function initAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (e) {
+                console.warn('Web Audio API não suportada', e);
+            }
+        }
+
+        /**
+         * Toca som de pulo
+         */
+        function playJumpSound() {
+            if (!audioContext) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // Som de pulo: frequência que sobe rapidamente
+            oscillator.frequency.setValueAtTime(200, audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.1);
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+            
+            oscillator.type = 'sine';
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.1);
+        }
+
+        /**
+         * Toca som de super pulo
+         */
+        function playSuperJumpSound() {
+            if (!audioContext) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // Som de super pulo: mais grave e mais longo
+            oscillator.frequency.setValueAtTime(150, audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(600, audioContext.currentTime + 0.2);
+            
+            gainNode.gain.setValueAtTime(0.4, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+            
+            oscillator.type = 'square';
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.2);
+        }
+
+        /**
+         * Toca som de coleta de moeda
+         */
+        function playCoinSound() {
+            if (!audioContext) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // Som de moeda: duas notas rápidas ascendentes
+            oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+            oscillator.frequency.setValueAtTime(1200, audioContext.currentTime + 0.05);
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+            
+            oscillator.type = 'square';
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.15);
+        }
+
+        /**
+         * Inicializa a cena, câmera, luzes, e cria os objetos do jogo.
+         */
+        function init() {
+            // Inicializa áudio
+            initAudio();
+            
+            // Cena
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // Cor de céu azul
+            scene.fog = new THREE.Fog(0x87CEEB, 50, 150); // Névoa para profundidade
+
+            // Câmera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 6, 8); // Posição inicial da câmera
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true; // Habilita sombras
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            // Luzes
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            // Sol (luz direcional)
+            const sun = new THREE.DirectionalLight(0xfff4e6, 1.0);
+            sun.position.set(30, 50, 20);
+            sun.castShadow = true;
+            sun.shadow.camera.left = -50;
+            sun.shadow.camera.right = 50;
+            sun.shadow.camera.top = 50;
+            sun.shadow.camera.bottom = -50;
+            sun.shadow.camera.far = 150;
+            sun.shadow.mapSize.width = 2048;
+            sun.shadow.mapSize.height = 2048;
+            scene.add(sun);
+            
+            // Sol visual no céu
+            const sunGeo = new THREE.SphereGeometry(5, 16, 16);
+            const sunMat = new THREE.MeshBasicMaterial({ 
+                color: 0xffeb3b,
+                fog: false
+            });
+            const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+            sunMesh.position.set(50, 60, -50);
+            scene.add(sunMesh);
+
+            // Chão grande tipo Minecraft (várias camadas de grama)
+            const grassTex = createBlockTexture('grass');
+            const groundGeometry = new THREE.BoxGeometry(200, 1, 200);
+            const groundMaterial = new THREE.MeshStandardMaterial({ 
+                map: grassTex,
+                flatShading: true 
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.position.y = -10;
+            ground.receiveShadow = true;
+            scene.add(ground);
+            
+            // Camadas de terra abaixo
+            const dirtTex = createBlockTexture('stone');
+            for (let i = 1; i <= 3; i++) {
+                const dirtGeo = new THREE.BoxGeometry(200, 1, 200);
+                const dirtMat = new THREE.MeshStandardMaterial({ 
+                    map: dirtTex,
+                    flatShading: true 
+                });
+                const dirtLayer = new THREE.Mesh(dirtGeo, dirtMat);
+                dirtLayer.position.y = -10 - i;
+                dirtLayer.receiveShadow = true;
+                scene.add(dirtLayer);
+            }
+
+            // Criar Nuvens
+            for (let i = 0; i < 20; i++) {
+                const cloud = createCloud(
+                    (Math.random() - 0.5) * 150,
+                    20 + Math.random() * 15,
+                    (Math.random() - 0.5) * 150 - 50
+                );
+                clouds.push(cloud);
+                scene.add(cloud);
+            }
+            
+            // Criar Dragão
+            dragon = createDragon();
+            scene.add(dragon);
+            
+            // Criar Pássaros
+            for (let i = 0; i < 10; i++) {
+                const bird = createBird(
+                    (Math.random() - 0.5) * 100,
+                    15 + Math.random() * 10,
+                    (Math.random() - 0.5) * 100 - 40
+                );
+                birds.push(bird);
+                scene.add(bird);
+            }
+
+            // Criar Jogador (Personagem Minecraft)
+            player = createMinecraftPlayer();
+            playerBox = new THREE.Box3(); // Inicializa a caixa de colisão
+            resetPlayer();
+            scene.add(player);
+
+            // Criar Plataformas com texturas
+            platformData.forEach((data, index) => {
+                const [x, y, z, w, h, d, type] = data;
+                const platformGeo = new THREE.BoxGeometry(w, h, d);
+                const platformTex = createBlockTexture(type);
+                const platformMat = new THREE.MeshStandardMaterial({ 
+                    map: platformTex,
+                    flatShading: true 
+                });
+                const platform = new THREE.Mesh(platformGeo, platformMat);
+                platform.position.set(x, y, z);
+                platform.receiveShadow = true;
+                platform.castShadow = true;
+                
+                platform.userData.box = new THREE.Box3().setFromObject(platform);
+                
+                platforms.push(platform);
+                scene.add(platform);
+
+                // A última plataforma é o objetivo
+                if (index === platformData.length - 1) {
+                    goalPlatform = platform;
+                    
+                    // Adiciona partículas brilhantes ao redor da plataforma final
+                    for (let i = 0; i < 20; i++) {
+                        const particleGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+                        const particleMat = new THREE.MeshBasicMaterial({ 
+                            color: 0x00ffff,
+                            transparent: true,
+                            opacity: 0.8
+                        });
+                        const particle = new THREE.Mesh(particleGeo, particleMat);
+                        particle.position.set(
+                            x + (Math.random() - 0.5) * 10,
+                            y + 2 + Math.random() * 3,
+                            z + (Math.random() - 0.5) * 10
+                        );
+                        particle.userData.speed = Math.random() * 0.02 + 0.01;
+                        particle.userData.angle = Math.random() * Math.PI * 2;
+                        particles.push(particle);
+                        scene.add(particle);
+                    }
+                }
+                
+                // Adiciona árvores em algumas plataformas de grama
+                if (type === 'grass' && w >= 3 && Math.random() > 0.5) {
+                    const tree = createTree(
+                        x + (Math.random() - 0.5) * (w - 1),
+                        z + (Math.random() - 0.5) * (d - 1)
+                    );
+                    trees.push(tree);
+                    scene.add(tree);
+                }
+            });
+
+            // Criar Moedas estilo Minecraft
+            const coinGeo = new THREE.BoxGeometry(0.4, 0.4, 0.1);
+            const coinMat = new THREE.MeshStandardMaterial({ 
+                color: 0xffd700,
+                emissive: 0xffaa00,
+                metalness: 0.8,
+                roughness: 0.2,
+                flatShading: true 
+            });
+            
+            coinData.forEach(data => {
+                const [x, y, z] = data;
+                const coin = new THREE.Mesh(coinGeo, coinMat);
+                coin.position.set(x, y, z);
+                coin.castShadow = true;
+                coin.userData.box = new THREE.Box3().setFromObject(coin);
+                coin.userData.isCollected = false;
+                
+                coins.push(coin);
+                scene.add(coin);
+            });
+
+            // Adicionar Ouvintes de Eventos
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            
+            // Inicializa áudio no primeiro clique/toque (requerido por navegadores)
+            const startAudio = () => {
+                if (audioContext && audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                document.removeEventListener('click', startAudio);
+                document.removeEventListener('touchstart', startAudio);
+            };
+            document.addEventListener('click', startAudio);
+            document.addEventListener('touchstart', startAudio);
+            
+            // Ouvintes de Toque
+            setupTouchControls();
+
+            // Botão de Reset
+            resetBtn.addEventListener('click', () => {
+                messageBox.style.display = 'none';
+                gameOver = false;
+                score = 0;
+                updateScore();
+                resetPlayer();
+                resetCoins();
+                animate(); // Reinicia o loop
+            });
+            
+            updateSuperJumps(); // Atualiza a UI na inicialização
+        }
+
+        /**
+         * Loop principal do jogo, chamado a cada frame.
+         */
+        function animate() {
+            if (gameOver) return; // Para o jogo se 'gameOver' for verdadeiro
+
+            requestAnimationFrame(animate);
+
+            // Atualiza lógica do jogo
+            updatePhysics();
+            updateCamera();
+            
+            // Anima as moedas
+            coins.forEach(coin => {
+                if (!coin.userData.isCollected) {
+                    coin.rotation.y += 0.05;
+                    // Movimento de flutuação
+                    coin.position.y += Math.sin(Date.now() * 0.003) * 0.003;
+                }
+            });
+
+            // Anima partículas de coleta (sparkles)
+            pickupParticles.forEach((p, idx) => {
+                p.position.add(p.userData.velocity);
+                p.userData.velocity.multiplyScalar(0.98);
+                p.userData.life -= 2;
+                p.material.opacity = Math.max(p.userData.life / p.userData.maxLife, 0);
+                p.scale.multiplyScalar(0.995);
+                if (p.userData.life <= 0) {
+                    scene.remove(p);
+                    pickupParticles.splice(idx, 1);
+                }
+            });
+            
+            // Anima as nuvens (movimento lento)
+            clouds.forEach(cloud => {
+                cloud.position.x += 0.01;
+                if (cloud.position.x > 80) {
+                    cloud.position.x = -80;
+                }
+            });
+            
+            // Anima o dragão
+            if (dragon) {
+                dragon.userData.angle += dragon.userData.speed;
+                dragon.position.x = Math.cos(dragon.userData.angle) * 30;
+                dragon.position.z = -50 + Math.sin(dragon.userData.angle) * 40;
+                dragon.position.y = 15 + Math.sin(dragon.userData.angle * 2) * 3;
+                
+                // Rotaciona o dragão na direção do movimento
+                dragon.rotation.y = dragon.userData.angle + Math.PI / 2;
+                
+                // Anima as asas
+                const wingAngle = Math.sin(Date.now() * 0.01) * 0.5;
+                dragon.userData.leftWing.rotation.x = -Math.PI / 6 + wingAngle;
+                dragon.userData.rightWing.rotation.x = Math.PI / 6 - wingAngle;
+            }
+            
+            // Anima os pássaros
+            birds.forEach(bird => {
+                bird.position.x += bird.userData.speed;
+                bird.position.y += Math.sin(Date.now() * 0.002) * 0.02;
+                
+                if (bird.position.x > 60) {
+                    bird.position.x = -60;
+                }
+                
+                // Anima as asas
+                const wingAngle = Math.sin(Date.now() * bird.userData.wingSpeed) * 0.8;
+                bird.userData.leftWing.rotation.z = wingAngle;
+                bird.userData.rightWing.rotation.z = -wingAngle;
+            });
+            
+            // Anima as partículas ao redor da plataforma final
+            particles.forEach(particle => {
+                particle.userData.angle += particle.userData.speed;
+                particle.position.y += Math.sin(particle.userData.angle) * 0.02;
+                particle.rotation.x += 0.02;
+                particle.rotation.y += 0.03;
+            });
+            
+            // Anima as árvores (balançam levemente)
+            trees.forEach(tree => {
+                tree.rotation.z = Math.sin(Date.now() * 0.001) * 0.02;
+            });
+
+            // Renderiza a cena
+            renderer.render(scene, camera);
+        }
+
+        /**
+         * Atualiza a física do jogador (movimento, gravidade, colisões).
+         */
+        function updatePhysics() {
+            // --- 1. Aplicar Controles ---
+            let moving = false;
+            
+            // Mantém o personagem sempre virado para frente (direção -Z)
+            player.rotation.y = 0;
+            
+            // Z (Frente/Trás)
+            if (keyState['ArrowUp'] || keyState['KeyW'] || touchState.forward) {
+                playerVelocity.z = -moveSpeed;
+                moving = true;
+            } else if (keyState['ArrowDown'] || keyState['KeyS'] || touchState.backward) {
+                playerVelocity.z = moveSpeed;
+                moving = true;
+            } else {
+                playerVelocity.z *= damping; // Freia
+            }
+
+            // X (Esquerda/Direita)
+            if (keyState['ArrowLeft'] || keyState['KeyA'] || touchState.left) {
+                playerVelocity.x = -moveSpeed;
+                moving = true;
+            } else if (keyState['ArrowRight'] || keyState['KeyD'] || touchState.right) {
+                playerVelocity.x = moveSpeed;
+                moving = true;
+            } else {
+                playerVelocity.x *= damping; // Freia
+            }
+
+            // Y (Pulo)
+            // Checa Super Pulo PRIMEIRO
+            // (Tecla Q ou Shift Esquerdo, ou toque)
+            if ((keyState['KeyQ'] || keyState['ShiftLeft'] || touchState.superJump) && superJumps > 0) {
+                playerVelocity.y = superJumpForce;
+                onGround = false; // Pode pular no ar
+                superJumps--;
+                updateSuperJumps();
+                playSuperJumpSound(); // Som de super pulo
+                touchState.superJump = false; // Consome o toque
+                keyState['KeyQ'] = false; // Consome a tecla
+                keyState['ShiftLeft'] = false;
+            } 
+            // Pulo Normal
+            else if ((keyState['Space'] || touchState.jump) && onGround) {
+                playerVelocity.y = jumpForce;
+                onGround = false;
+                playJumpSound(); // Som de pulo
+                touchState.jump = false; // Consome o pulo por toque
+            }
+
+            // --- 2. Aplicar Gravidade ---
+            playerVelocity.y -= gravity;
+
+            // --- 3. Aplicar Velocidade à Posição ---
+            player.position.x += playerVelocity.x;
+            player.position.z += playerVelocity.z;
+            // Trata colisão vertical separadamente
+            player.position.y += playerVelocity.y;
+
+            // --- 4. Checar Colisões com Plataformas ---
+            onGround = false; // Assume que está no ar
+            playerBox.setFromObject(player); // Atualiza a caixa de colisão do jogador
+
+            for (const platform of platforms) {
+                const platformBox = platform.userData.box;
+
+                if (playerBox.intersectsBox(platformBox)) {
+                    // Se colidiu e estava caindo (ou parado)
+                    // E se o fundo do jogador no frame anterior estava acima do topo da plataforma
+                    if (playerVelocity.y <= 0 && (player.position.y - 0.65) > (platform.position.y)) {
+                        
+                        playerVelocity.y = 0; // Para de cair
+                        // "Gruda" o jogador no topo da plataforma (pés do personagem na base)
+                        player.position.y = platform.position.y + (platform.geometry.parameters.height / 2) + 0.65;
+                        onGround = true;
+                        break; // Encontrou um chão, não precisa checar outras plataformas
+                    }
+                }
+            }
+
+            // --- 5. Checar Coleta de Moedas ---
+            playerBox.setFromObject(player); // Re-atualiza a caixa (posição Y pode ter mudado)
+            
+            for (const coin of coins) {
+                if (!coin.userData.isCollected) {
+                    coin.userData.box.setFromObject(coin); 
+                    
+                    if (playerBox.intersectsBox(coin.userData.box)) {
+                        coin.userData.isCollected = true;
+                        scene.remove(coin); // Esconde a moeda
+                        score++;
+                        updateScore();
+                        playCoinSound(); // Som de moeda coletada
+                        // Efeito: pequenas partículas brilhantes ao coletar
+                        for (let i = 0; i < 8; i++) {
+                            const sparkGeo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
+                            const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 1 });
+                            const spark = new THREE.Mesh(sparkGeo, sparkMat);
+                            spark.position.set(coin.position.x, coin.position.y, coin.position.z);
+                            spark.userData.velocity = new THREE.Vector3((Math.random() - 0.5) * 0.12, Math.random() * 0.12 + 0.02, (Math.random() - 0.5) * 0.12);
+                            spark.userData.life = 40 + Math.random() * 30;
+                            spark.userData.maxLife = spark.userData.life;
+                            pickupParticles.push(spark);
+                            scene.add(spark);
+                        }
+                    }
+                }
+            }
+
+            // --- 6. Checar Queda ou Vitória ---
+            // Queda
+            if (player.position.y < -10) {
+                showMessage("💔 Você caiu! Tente novamente.", true);
+            }
+
+            // Vitória
+            if (playerBox.intersectsBox(goalPlatform.userData.box) && onGround) {
+                showMessage("💎 Você Venceu! 💎<br>❤️ Esse jogo foi feito com amor para você! ❤️<br>🌟 Você é incrível! 🌟", false);
+                gameOver = true;
+            }
+        }
+
+        /**
+         * Atualiza a câmera para seguir o jogador.
+         */
+        function updateCamera() {
+            // A câmera segue o jogador suavemente
+            const targetPosition = new THREE.Vector3(
+                player.position.x,
+                player.position.y + 4, // Um pouco acima
+                player.position.z + 8  // Um pouco atrás
+            );
+            
+            camera.position.lerp(targetPosition, 0.1);
+            camera.lookAt(player.position.x, player.position.y, player.position.z);
+        }
+
+        /**
+         * Reseta o jogador para a posição inicial.
+         */
+        function resetPlayer() {
+            player.position.copy(startPosition);
+            player.rotation.y = startRotation; // Define rotação inicial (de costas)
+            playerVelocity.set(0, 0, 0);
+            onGround = true;
+            superJumps = 3; // Reseta os super pulos
+            updateSuperJumps(); // Atualiza a UI
+        }
+
+        /**
+         * Recoloca as moedas na cena.
+         */
+        function resetCoins() {
+            coins.forEach(coin => {
+                if (coin.userData.isCollected) {
+                    coin.userData.isCollected = false;
+                    scene.add(coin);
+                }
+            });
+        }
+
+        /**
+         * Atualiza o placar na tela.
+         */
+        function updateScore() {
+            scoreElement.textContent = `🪙 Moedas: ${score}`;
+        }
+        
+        /**
+         * Atualiza o placar de super pulos na tela.
+         */
+        function updateSuperJumps() {
+            superJumpsElement.textContent = `🚀 Super Pulos: ${superJumps}`;
+        }
+
+        /**
+         * Mostra uma mensagem na tela.
+         * @param {string} text - O texto da mensagem.
+         * @param {boolean} isFall - Se a mensagem é de queda (afeta o botão).
+         */
+        function showMessage(text, isFall) {
+            messageText.innerHTML = text; // Usar innerHTML para suportar emojis e HTML
+            resetBtn.textContent = isFall ? "Tentar Novamente" : "Jogar Novamente";
+            messageBox.style.display = 'block';
+            gameOver = true; 
+        }
+
+
+        // --- Funções de Eventos ---
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onKeyDown(event) {
+            keyState[event.code] = true;
+        }
+
+        function onKeyUp(event) {
+            keyState[event.code] = false;
+        }
+
+        /**
+         * Configura os ouvintes de eventos para os botões de toque.
+         */
+        function setupTouchControls() {
+            const controls = [
+                { id: 'up-btn', state: 'forward' },
+                { id: 'down-btn', state: 'backward' },
+                { id: 'left-btn', state: 'left' },
+                { id: 'right-btn', state: 'right' },
+                { id: 'jump-btn', state: 'jump' },
+                { id: 'super-jump-btn', state: 'superJump' } // Novo controle
+            ];
+
+            controls.forEach(control => {
+                const element = document.getElementById(control.id);
+                
+                element.addEventListener('touchstart', (e) => {
+                    e.preventDefault(); 
+                    touchState[control.state] = true;
+                }, { passive: false });
+
+                element.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    // Para botões de ação (pulo), queremos que 'false' seja automático
+                    // Para botões de movimento, 'false' ao soltar está correto
+                    if (control.state !== 'jump' && control.state !== 'superJump') {
+                         touchState[control.state] = false;
+                    }
+                });
+            });
+            
+             // Lógica especial para botões de pulo (para não pular várias vezes)
+            document.getElementById('jump-btn').addEventListener('touchend', (e) => {
+                touchState.jump = false;
+            });
+            document.getElementById('super-jump-btn').addEventListener('touchend', (e) => {
+                touchState.superJump = false;
+            });
+        }
+
+
+        // --- Iniciar o Jogo ---
+        init();
+        animate();
+
+    </script>
+</body>
+</html>
